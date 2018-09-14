@@ -45,12 +45,6 @@ class Article(object):
         """The **kwargs argument may be filled with config values, which
         is added into the config object
         """
-        if isinstance(title, Configuration) or \
-                isinstance(source_url, Configuration):
-            raise ArticleException(
-                'Configuration object being passed incorrectly as title or '
-                'source_url! Please verify `Article`s __init__() fn.')
-
         self.config = config or Configuration()
         self.config = extend_config(self.config, kwargs)
 
@@ -71,6 +65,8 @@ class Article(object):
         self.url = urls.prepare_url(url, self.source_url)
 
         self.title = title
+
+        self.titles = [title]
 
         # URL of the "best image" to represent this article
         self.top_img = self.top_image = ''
@@ -133,6 +129,8 @@ class Article(object):
         # Holds the top element of the DOM that we determine is a candidate
         # for the main body of the article
         self.top_node = None
+
+        self.top_nodes = [None]
 
         # A deepcopied clone of the above object before heavy parsing
         # operations, useful for users to query data in the
@@ -204,8 +202,9 @@ class Article(object):
         document_cleaner = DocumentCleaner(self.config)
         output_formatter = OutputFormatter(self.config)
 
-        title = self.extractor.get_title(self.clean_doc)
-        self.set_title(title)
+        titles = self.extractor.get_titles(self.clean_doc)
+        self.titles = titles
+        self.set_title(titles[0])
 
         authors = self.extractor.get_authors(self.clean_doc)
         self.set_authors(authors)
@@ -245,23 +244,34 @@ class Article(object):
         # Before any computations on the body, clean DOM object
         self.doc = document_cleaner.clean(self.doc)
 
-        self.top_node = self.extractor.calculate_best_node(self.doc)
-        if self.top_node is not None:
-            video_extractor = VideoExtractor(self.config, self.top_node)
-            self.set_movies(video_extractor.get_videos())
-
-            self.top_node = self.extractor.post_cleanup(self.top_node)
-            self.clean_top_node = copy.deepcopy(self.top_node)
-
-            text, article_html = output_formatter.get_formatted(
-                self.top_node)
-            self.set_article_html(article_html)
-            self.set_text(text)
+        self.top_nodes = self.extractor.calculate_best_node(self.doc)
+        if self.top_nodes:
+            self.top_node = self.top_nodes[0]
 
         self.fetch_images()
 
         self.is_parsed = True
         self.release_resources()
+
+    def format_top_node(self, top_node, title):
+        output_formatter = OutputFormatter(self.config)
+        if self.config.use_meta_language:
+            self.extractor.update_language(self.meta_lang)
+            output_formatter.update_language(self.meta_lang)
+
+        self.top_node = top_node
+
+        video_extractor = VideoExtractor(self.config, self.top_node)
+        self.set_movies(video_extractor.get_videos())
+
+        self.top_node = self.extractor.post_cleanup(self.top_node)
+        self.clean_top_node = copy.deepcopy(self.top_node)
+
+        text, article_html = output_formatter.get_formatted(self.top_node, title)
+        self.set_article_html(article_html)
+        self.set_text(text)
+
+        return text
 
     def fetch_images(self):
         if self.clean_doc is not None:

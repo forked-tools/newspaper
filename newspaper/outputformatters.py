@@ -7,6 +7,7 @@ __author__ = 'Lucas Ou-Yang'
 __license__ = 'MIT'
 __copyright__ = 'Copyright 2014, Lucas Ou-Yang'
 
+from difflib import SequenceMatcher
 from html import unescape
 import logging
 
@@ -38,7 +39,7 @@ class OutputFormatter(object):
     def get_top_node(self):
         return self.top_node
 
-    def get_formatted(self, top_node):
+    def get_formatted(self, top_node, title=''):
         """Returns the body text of an article, and also the body article
         html if specified. Returns in (text, html) form
         """
@@ -55,26 +56,37 @@ class OutputFormatter(object):
         self.add_newline_to_li()
         self.replace_with_text()
         self.remove_empty_tags()
-        self.remove_trailing_media_div()
+        self.remove_trailing_media_div(title)
         text = self.convert_to_text()
         # print(self.parser.nodeToString(self.get_top_node()))
         return (text, html)
 
     def convert_to_text(self):
-        txts = []
-        for node in list(self.get_top_node()):
-            try:
-                txt = self.parser.getText(node)
-            except ValueError as err:  # lxml error
-                log.info('%s ignoring lxml node error: %s', __title__, err)
-                txt = None
-
-            if txt:
-                txt = unescape(txt)
-                txt_lis = innerTrim(txt).split(r'\n')
-                txt_lis = [n.strip(' ') for n in txt_lis]
-                txts.extend(txt_lis)
+        txts = self.convert_node_to_text(self.get_top_node())
         return '\n\n'.join(txts)
+
+    def convert_node_to_text(self, node):
+        txts = []
+        tags = ['blockquote', 'dl', 'div', 'ol', 'p', 'pre', 'table', 'tr', 'th', 'ul', 'li']
+
+        for child in list(node):
+            items = self.parser.getElementsByTags(child, tags)
+            if len(items) == 0:
+                try:
+                    txt = self.parser.getText(child)
+                except ValueError as err:  # lxml error
+                    log.info('%s ignoring lxml node error: %s', __title__, err)
+                    txt = None
+
+                if txt:
+                    txt = unescape(txt)
+                    txt_lis = innerTrim(txt).split(r'\n')
+                    txt_lis = [n.strip(' ') for n in txt_lis]
+                    txts.extend(txt_lis)
+            else:
+                txts.extend(self.convert_node_to_text(child))
+
+        return txts
 
     def convert_to_html(self):
         cleaned_node = self.parser.clean_article_html(self.get_top_node())
@@ -138,7 +150,7 @@ class OutputFormatter(object):
                         el, tag='embed')) == 0:
                 self.parser.remove(el)
 
-    def remove_trailing_media_div(self):
+    def remove_trailing_media_div(self, title=''):
         """Punish the *last top level* node in the top_node if it's
         DOM depth is too deep. Many media non-content links are
         eliminated: "related", "loading gallery", etc
@@ -153,7 +165,11 @@ class OutputFormatter(object):
                 return depth
             max_depth = 0
             for c in children:
-                e_depth = get_depth(c, depth + 1)
+                # Ignore <p> to prevent from wrongly excluding article content
+                if c.tag in ('p', 'font'):
+                    e_depth = get_depth(c, depth)
+                else:
+                    e_depth = get_depth(c, depth + 1)
                 if e_depth > max_depth:
                     max_depth = e_depth
             return max_depth
@@ -163,5 +179,11 @@ class OutputFormatter(object):
             return
 
         last_node = top_level_nodes[-1]
-        if get_depth(last_node) >= 2:
+        if get_depth(last_node) >= 3:
+            if title:
+                txt = self.parser.getText(last_node)
+                s = SequenceMatcher(None, title, txt)
+                if s.ratio() >= 0.5:
+                    return
+
             self.parser.remove(last_node)

@@ -14,7 +14,6 @@ __copyright__ = 'Copyright 2014, Lucas Ou-Yang'
 import copy
 import logging
 import re
-import re
 from collections import defaultdict
 
 from dateutil.parser import parse as date_parser
@@ -26,15 +25,19 @@ from .utils import StringReplacement, StringSplitter
 
 log = logging.getLogger(__name__)
 
+site_name_end_pat = re.compile(r'(网|在线|门户|频道|栏目|站点?|新闻|政府|办公室)$')
+blank_pat = re.compile(r'\s+')
+
 MOTLEY_REPLACEMENT = StringReplacement("&#65533;", "")
 ESCAPED_FRAGMENT_REPLACEMENT = StringReplacement(
     "#!", "?_escaped_fragment_=")
 TITLE_REPLACEMENTS = StringReplacement("&raquo;", "»")
 PIPE_SPLITTER = StringSplitter("\\|")
-DASH_SPLITTER = StringSplitter(" - ")
+DASH_SPLITTER = StringSplitter("-")
 UNDERSCORE_SPLITTER = StringSplitter("_")
 SLASH_SPLITTER = StringSplitter("/")
 ARROWS_SPLITTER = StringSplitter(" » ")
+SPLIT_SPLITTER = StringSplitter("·")
 COLON_SPLITTER = StringSplitter(":")
 SPACE_SPLITTER = StringSplitter(' ')
 NO_STRINGS = set()
@@ -232,7 +235,7 @@ class ContentExtractor(object):
 
         return None
 
-    def get_title(self, doc):
+    def get_titles(self, doc):
         """Fetch the article title and analyze it
 
         Assumptions:
@@ -253,7 +256,7 @@ class ContentExtractor(object):
         title_element = self.parser.getElementsByTag(doc, tag='title')
         # no title found
         if title_element is None or len(title_element) == 0:
-            return title
+            return [title]
 
         # title elem found
         title_text = self.parser.getText(title_element[0])
@@ -264,19 +267,24 @@ class ContentExtractor(object):
         # - too short texts (fewer than 2 words) are discarded
         # - clean double spaces
         title_text_h1 = ''
-        title_element_h1_list = self.parser.getElementsByTag(doc,
-                                                             tag='h1') or []
-        title_text_h1_list = [self.parser.getText(tag) for tag in
-                              title_element_h1_list]
-        if title_text_h1_list:
-            # sort by len and set the longest
-            title_text_h1_list.sort(key=len, reverse=True)
-            title_text_h1 = title_text_h1_list[0]
-            # discard too short texts
-            if len(title_text_h1.split(' ')) <= 2:
-                title_text_h1 = ''
-            # clean double spaces
-            title_text_h1 = ' '.join([x for x in title_text_h1.split() if x])
+        title_text_h1_num = 0
+        for tag in ('h1', 'h2', 'h3', 'h4'):
+            title_element_h1_list = self.parser.getElementsByTag(doc, tag=tag) or []
+            title_text_h1_list = [self.parser.getText(tag) for tag in
+                                  title_element_h1_list]
+            title_text_h1_num = len(title_text_h1_list)
+            if title_text_h1_list:
+                # sort by len and set the longest
+                title_text_h1_list.sort(key=len, reverse=True)
+                title_text_h1 = title_text_h1_list[0]
+                # discard too short texts
+                if len(title_text_h1) <= 6:
+                    title_text_h1 = ''
+                # clean double spaces
+                title_text_h1 = ' '.join([x for x in title_text_h1.split() if x])
+                break
+            else:
+                continue
 
         # title from og:title
         title_text_fb = (
@@ -336,6 +344,12 @@ class ContentExtractor(object):
                                           title_text_h1)
             used_delimeter = True
 
+        # split title with ·
+        if not used_delimeter and '·' in title_text:
+            title_text = self.split_title(title_text, SPLIT_SPLITTER,
+                                          title_text_h1)
+            used_delimeter = True
+
         title = MOTLEY_REPLACEMENT.replaceAll(title_text)
 
         # in some cases the final title is quite similar to title_text_h1
@@ -345,7 +359,14 @@ class ContentExtractor(object):
         if filter_title_text_h1 == filter_title:
             title = title_text_h1
 
-        return title
+        titles = [title]
+        if len(filter_title_text_h1) > 6 and title_text_h1_num == 1:
+            if len(filter_title) <= 6:
+                titles[0] = title_text_h1
+            else:
+                titles.append(title_text_h1)
+
+        return titles
 
     def split_title(self, title, splitter, hint=None):
         """Split the title to best part possible
@@ -364,6 +385,8 @@ class ContentExtractor(object):
             if hint and hint in filter_regex.sub('', current).lower():
                 large_text_index = i
                 break
+            if site_name_end_pat.search(current):
+                continue
             if len(current) > large_text_length:
                 large_text_length = len(current)
                 large_text_index = i
@@ -823,17 +846,13 @@ class ContentExtractor(object):
             cnt += 1
             i += 1
 
-        top_node_score = 0
+        candidates = []
         for e in parent_nodes:
             score = self.get_score(e)
+            candidates.append((e, score))
+            candidates.sort(key = lambda x: x[1], reverse=True)
 
-            if score > top_node_score:
-                top_node = e
-                top_node_score = score
-
-            if top_node is None:
-                top_node = e
-        return top_node
+        return [x[0] for x in candidates]
 
     def is_boostable(self, node):
         """A lot of times the first paragraph might be the caption under an image
@@ -871,8 +890,8 @@ class ContentExtractor(object):
         for current_node in results:
             ps = self.get_siblings_content(
                 current_node, baseline_score_siblings_para)
-            for p in ps:
-                top_node.insert(0, p)
+            for i in range(len(ps) - 1, -1, -1):
+                top_node.insert(0, ps[i])
         return top_node
 
     def get_siblings_content(
@@ -980,7 +999,7 @@ class ContentExtractor(object):
         for link in links:
             sb.append(self.parser.getText(link))
 
-        link_text = ''.join(sb)
+        link_text = ' '.join(sb)
         link_words = link_text.split()
         num_link_words = float(len(link_words))
         num_links = float(len(links))
@@ -1038,9 +1057,15 @@ class ContentExtractor(object):
         or paras with no gusto; add adjacent nodes which look contenty
         """
         node = self.add_siblings(top_node)
+        self.remove_high_density(node, len(blank_pat.sub('', ''.join(node.itertext()))))
+        return node
+
+    def remove_high_density(self, node, total_len):
         for e in self.parser.getChildren(node):
             e_tag = self.parser.getTag(e)
             if e_tag != 'p':
                 if self.is_highlink_density(e):
-                    self.parser.remove(e)
-        return node
+                    if len(e) > 0 and len(blank_pat.sub('', ''.join(e.itertext()))) >= total_len * 0.2:
+                        self.remove_high_density(e, total_len)
+                    else:
+                        self.parser.remove(e)

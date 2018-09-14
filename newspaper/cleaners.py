@@ -156,7 +156,7 @@ class DocumentCleaner(object):
                                 replacement_text, nodes_to_remove):
         kid_text_node = kid
         replace_text = self.tablines_replacements.replaceAll(kid_text)
-        if len(replace_text) > 1:
+        if len(replace_text) > 0:
             prev_node = self.parser.previousSibling(kid_text_node)
             while prev_node is not None \
                     and self.parser.getTag(prev_node) == "a" \
@@ -188,6 +188,7 @@ class DocumentCleaner(object):
         nodes_to_remove = []
         kids = self.parser.childNodesWithText(div)
         for kid in kids:
+            kid.tail = None
             # The node is a <p> and already has some replacement text
             if self.parser.getTag(kid) == 'p' and len(replacement_text) > 0:
                 new_node = self.get_flushed_buffer(
@@ -223,7 +224,8 @@ class DocumentCleaner(object):
         divs = self.parser.getElementsByTag(doc, tag=dom_type)
         tags = ['a', 'blockquote', 'dl', 'div', 'img', 'ol', 'p',
                 'pre', 'table', 'ul']
-        for div in divs:
+        for k in range(len(divs) - 1, -1, -1):
+            div = divs[k]
             items = self.parser.getElementsByTags(div, tags)
             if div is not None and len(items) == 0:
                 self.replace_with_para(doc, div)
