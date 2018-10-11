@@ -17,6 +17,7 @@ import re
 from collections import defaultdict
 
 from dateutil.parser import parse as date_parser
+import dateparser
 from tldextract import tldextract
 from urllib.parse import urljoin, urlparse, urlunparse
 
@@ -182,6 +183,7 @@ class ContentExtractor(object):
         3. Raw regex searches in the HTML + added heuristics
         """
 
+        """
         def parse_date_str(date_str):
             if date_str:
                 try:
@@ -197,6 +199,7 @@ class ContentExtractor(object):
             datetime_obj = parse_date_str(date_str)
             if datetime_obj:
                 return datetime_obj
+        """
 
         PUBLISH_DATE_TAGS = [
             {'attribute': 'property', 'value': 'rnews:datePublished',
@@ -229,9 +232,13 @@ class ContentExtractor(object):
                 date_str = self.parser.getAttribute(
                     meta_tags[0],
                     known_meta_tag['content'])
-                datetime_obj = parse_date_str(date_str)
-                if datetime_obj:
-                    return datetime_obj
+                try:
+                    datetime_obj = dateparser.parse(date_str, settings={'DATE_ORDER': 'YMD', 'PREFER_DAY_OF_MONTH': 'first', 'PREFER_DATES_FROM': 'past'})
+                except:
+                    pass
+                else:
+                    if datetime_obj:
+                        return datetime_obj
 
         return None
 
