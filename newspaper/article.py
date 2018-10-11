@@ -206,8 +206,8 @@ class Article(object):
         self.titles = titles
         self.set_title(titles[0])
 
-        authors = self.extractor.get_authors(self.clean_doc)
-        self.set_authors(authors)
+        #authors = self.extractor.get_authors(self.clean_doc)
+        #self.set_authors(authors)
 
         meta_lang = self.extractor.get_meta_lang(self.clean_doc)
         self.set_meta_language(meta_lang)
@@ -216,26 +216,26 @@ class Article(object):
             self.extractor.update_language(self.meta_lang)
             output_formatter.update_language(self.meta_lang)
 
-        meta_favicon = self.extractor.get_favicon(self.clean_doc)
-        self.set_meta_favicon(meta_favicon)
+        #meta_favicon = self.extractor.get_favicon(self.clean_doc)
+        #self.set_meta_favicon(meta_favicon)
 
-        meta_description = \
-            self.extractor.get_meta_description(self.clean_doc)
-        self.set_meta_description(meta_description)
+        #meta_description = \
+        #    self.extractor.get_meta_description(self.clean_doc)
+        #self.set_meta_description(meta_description)
 
-        canonical_link = self.extractor.get_canonical_link(
-            self.url, self.clean_doc)
-        self.set_canonical_link(canonical_link)
+        #canonical_link = self.extractor.get_canonical_link(
+        #    self.url, self.clean_doc)
+        #self.set_canonical_link(canonical_link)
 
-        tags = self.extractor.extract_tags(self.clean_doc)
-        self.set_tags(tags)
+        #tags = self.extractor.extract_tags(self.clean_doc)
+        #self.set_tags(tags)
 
-        meta_keywords = self.extractor.get_meta_keywords(
-            self.clean_doc)
-        self.set_meta_keywords(meta_keywords)
+        #meta_keywords = self.extractor.get_meta_keywords(
+        #    self.clean_doc)
+        #self.set_meta_keywords(meta_keywords)
 
-        meta_data = self.extractor.get_meta_data(self.clean_doc)
-        self.set_meta_data(meta_data)
+        #meta_data = self.extractor.get_meta_data(self.clean_doc)
+        #self.set_meta_data(meta_data)
 
         self.publish_date = self.extractor.get_publishing_date(
             self.url,
@@ -248,7 +248,7 @@ class Article(object):
         if self.top_nodes:
             self.top_node = self.top_nodes[0]
 
-        self.fetch_images()
+        #self.fetch_images()
 
         self.is_parsed = True
         self.release_resources()
